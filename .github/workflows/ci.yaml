@@ -24,23 +24,12 @@ jobs:
     env:
       BUNDLE_GEMFILE: gemfiles/${{ matrix.gemfile }}.gemfile
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-      - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: ${{ matrix.ruby }}
-          bundler-cache: true
-      - name: Test
-        run: bundle exec rake spec || $ALLOW_FAILURES
-
-    steps:
       - name: Checkout code
         uses: actions/checkout@v3
       - name: Set up Ruby ${{ matrix.ruby }}
         uses: ruby/setup-ruby@v1
         with:
-          bundler-cache: true # 'bundle install' and cache gems
+          bundler-cache: true
           ruby-version: ${{ matrix.ruby }}
       - name: Run tests
         run: bundle exec rake spec
