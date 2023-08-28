@@ -7,12 +7,11 @@ on:
 jobs:
   test:
     name: Ruby ${{ matrix.ruby }} / Rails ${{ matrix.rails }}
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         os:
-          - ubuntu
+          - ubuntu-latest
         ruby:
           - 3.0
           - 3.1
@@ -21,8 +20,7 @@ jobs:
           - rails-7.0
         allow_failures:
           - false
-
-    runs-on: ${{ matrix.os }}-latest
+    runs-on: ${{ matrix.os }}
     env:
       BUNDLE_GEMFILE: gemfiles/${{ matrix.gemfile }}.gemfile
     steps:
