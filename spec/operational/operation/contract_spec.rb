@@ -20,8 +20,7 @@ RSpec.describe Operational::Operation::Contract do
     end
 
     it "sets the contract to the state" do
-      build_step = described_class::Build(contract: CreateForm)
-      build_step.call(state)
+      described_class::Build(contract: CreateForm).call(state)
 
       expect(state).to have_key(:contract)
       expect(state[:contract]).to be_a CreateForm
@@ -36,8 +35,7 @@ RSpec.describe Operational::Operation::Contract do
 
     describe "name" do
       it "allows overriding the state key" do
-        build_step = described_class::Build(contract: CreateForm, name: :test)
-        build_step.call(state)
+        described_class::Build(contract: CreateForm, name: :test).call(state)
 
         expect(state).to have_key(:test)
         expect(state[:test]).to be_a CreateForm
@@ -60,27 +58,23 @@ RSpec.describe Operational::Operation::Contract do
       end
 
       it "allows sending a model" do
-        build_step = described_class::Build(contract: CreateForm, model_key: :model)
-        expect(build_step.call({ model: model })).to eq true
+        expect(described_class::Build(contract: CreateForm, model_key: :model).call({ model: model })).to eq true
       end
 
       it "allows specifying the model key" do
-        build_step = described_class::Build(contract: CreateForm, model_key: :different_model)
-        expect(build_step.call({ different_model: model })).to eq true
+        expect(described_class::Build(contract: CreateForm, model_key: :different_model).call({ different_model: model })).to eq true
       end
 
       it "ensures the model quacks like an Active Model" do
-        build_step = described_class::Build(contract: CreateForm, model_key: :invalid)
         expect {
-          build_step.call({ model: model })
+          described_class::Build(contract: CreateForm, model_key: :invalid).call({ model: model })
         }.to raise_error Operational::InvalidContractModel
       end
 
       it "applies the matching attributes from model to contract" do
         state = { model: model }
 
-        build_step = described_class::Build(contract: CreateForm, model_key: :model)
-        build_step.call(state)
+        described_class::Build(contract: CreateForm, model_key: :model).call(state)
 
         expect(state[:contract].name).to eq "Test"
       end
@@ -88,15 +82,13 @@ RSpec.describe Operational::Operation::Contract do
 
     describe "model_persisted" do
       it "defaults to not persisted" do
-        build_step = described_class::Build(contract: CreateForm)
-        build_step.call(state)
+        described_class::Build(contract: CreateForm).call(state)
 
         expect(state[:contract].persisted?).to eq false
       end
 
       it "allows setting the persisted value" do
-        build_step = described_class::Build(contract: CreateForm, model_persisted: true)
-        build_step.call(state)
+        described_class::Build(contract: CreateForm, model_persisted: true).call(state)
 
         expect(state[:contract].persisted?).to eq true
       end
@@ -118,15 +110,13 @@ RSpec.describe Operational::Operation::Contract do
         let(:state) { { model: model_class.new } }
 
         it "uses the model's persistence by default" do
-          build_step = described_class::Build(contract: CreateForm, model_key: :model)
-          build_step.call(state)
+          described_class::Build(contract: CreateForm, model_key: :model).call(state)
 
           expect(state[:contract].persisted?).to eq true
         end
 
         it "allows overriding the model's persistence" do
-          build_step = described_class::Build(contract: CreateForm, model_key: :model, model_persisted: false)
-          build_step.call(state)
+          described_class::Build(contract: CreateForm, model_key: :model, model_persisted: false).call(state)
 
           expect(state[:contract].persisted?).to eq false
         end
@@ -150,15 +140,13 @@ RSpec.describe Operational::Operation::Contract do
         let(:state) { { model: model_class.new } }
 
         it "uses the model's persistence by default" do
-          build_step = described_class::Build(contract: CreateForm, model_key: :model)
-          build_step.call(state)
+          described_class::Build(contract: CreateForm, model_key: :model).call(state)
 
           expect(state[:contract].persisted?).to eq false
         end
 
         it "allows overriding the model's persistence" do
-          build_step = described_class::Build(contract: CreateForm, model_key: :model, model_persisted: true)
-          build_step.call(state)
+          described_class::Build(contract: CreateForm, model_key: :model, model_persisted: true).call(state)
 
           expect(state[:contract].persisted?).to eq true
         end
@@ -181,16 +169,14 @@ RSpec.describe Operational::Operation::Contract do
       end
 
       it "runs the prepopulate_method if defined" do
-        build_step = described_class::Build(contract: CreateForm)
-        build_step.call(state)
+        described_class::Build(contract: CreateForm).call(state)
 
         expect(state[:prepopulate]).to eq "test"
         expect(state[:other_prepopulate]).to be_nil
       end
 
       it "allows overriding the method name" do
-        build_step = described_class::Build(contract: CreateForm, prepopulate_method: :other_prepopulate)
-        build_step.call(state)
+        described_class::Build(contract: CreateForm, prepopulate_method: :other_prepopulate).call(state)
 
         expect(state[:other_prepopulate]).to eq "test"
         expect(state[:prepopulate]).to be_nil
@@ -202,8 +188,7 @@ RSpec.describe Operational::Operation::Contract do
     let(:state) { { params: { name: "update", email: "update@test.com" }} }
 
     before :each do
-      build_step = described_class::Build(contract: CreateForm)
-      build_step.call(state)
+      described_class::Build(contract: CreateForm).call(state)
     end
 
     it "returns a callable step" do
@@ -211,22 +196,18 @@ RSpec.describe Operational::Operation::Contract do
     end
 
     it "applies the matching params to the contract" do
-      validate_step = described_class::Validate()
-      validate_step.call(state)
+      described_class::Validate().call(state)
 
       expect(state[:contract].name).to eq "update"
     end
 
     context "when form is valid" do
       it "returns true" do
-        validate_step = described_class::Validate()
-
-        expect(validate_step.call(state)).to eq true
+        expect(described_class::Validate().call(state)).to eq true
       end
 
       it "return empty error object" do
-        validate_step = described_class::Validate()
-        validate_step.call(state)
+        described_class::Validate().call(state)
 
         expect(state[:contract].valid?).to eq true
         expect(state[:contract].errors).to be_empty
@@ -275,9 +256,7 @@ RSpec.describe Operational::Operation::Contract do
       it "allows overriding the state key" do
         described_class::Build(contract: CreateForm, name: :test).call(state)
 
-        validate_step = described_class::Validate(name: :test)
-        expect(validate_step.call(state)).to eq true
-
+        expect(described_class::Validate(name: :test).call(state)).to eq true
         expect(state).to have_key(:test)
         expect(state[:test]).to be_a CreateForm
       end
@@ -288,8 +267,7 @@ RSpec.describe Operational::Operation::Contract do
         let(:state) { { params: { nested: { name: "update" }}} }
 
         it "uses params subhash" do
-          validate_step = described_class::Validate(params_path: :nested)
-          expect(validate_step.call(state)).to eq true
+          expect(described_class::Validate(params_path: :nested).call(state)).to eq true
         end
       end
 
@@ -297,8 +275,7 @@ RSpec.describe Operational::Operation::Contract do
         let(:state) { { different: { path: { name: "update" }}} }
 
         it "uses array to construct nested path from" do
-          validate_step = described_class::Validate(params_path: [:different, :path])
-          expect(validate_step.call(state)).to eq true
+          expect(described_class::Validate(params_path: [:different, :path]).call(state)).to eq true
         end
       end
 
@@ -306,9 +283,7 @@ RSpec.describe Operational::Operation::Contract do
         let(:state) { { no_matching_params: true } }
 
         it "validates the form as normal (with submitted params)" do
-          validate_step = described_class::Validate()
-
-          expect(validate_step.call(state)).to eq false
+          expect(described_class::Validate().call(state)).to eq false
           expect(state[:contract].errors).to be_present
         end
       end
@@ -330,9 +305,7 @@ RSpec.describe Operational::Operation::Contract do
       it "allows overriding the state key" do
         described_class::Build(contract: CreateForm, name: :test).call(state)
 
-        sync_step = described_class::Sync(name: :test)
-        expect(sync_step.call(state)).to eq true
-
+        expect(described_class::Sync(name: :test).call(state)).to eq true
         expect(state).to have_key(:test)
         expect(state[:test]).to be_a CreateForm
       end
@@ -358,14 +331,12 @@ RSpec.describe Operational::Operation::Contract do
       it "allows sending a model" do
         described_class::Build(contract: CreateForm, model_key: :model).call(state)
 
-        sync_step = described_class::Sync(model_key: :model)
-        expect(sync_step.call(state)).to eq true
+        expect(described_class::Sync(model_key: :model).call(state)).to eq true
       end
 
       it "ensures the model quacks like an Active Model" do
-        sync_step = described_class::Sync(model_key: :invalid)
         expect {
-          sync_step.call(state)
+          described_class::Sync(model_key: :invalid).call(state)
         }.to raise_error Operational::InvalidContractModel
       end
 
