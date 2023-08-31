@@ -26,7 +26,7 @@ RSpec.describe Operational::Operation do
     expect(OpClass.call.succeeded?).to eq true
   end
 
-  it "exposes the context as an array of the result" do
+  it "exposes the state as an array of the result" do
     result = OpClass.call
     expect(result[:step1]).to eq "step1"
     expect(result[:step2]).to eq "step2"
@@ -91,16 +91,15 @@ RSpec.describe Operational::Operation do
       result2 = OpClass2.call(run: 2)
       result3 = OpClass.call(run: 3)
 
-      expect(result1.context).to eq ({ run: 1, step1: "step1", step2: "step2" })
-      expect(result2.context).to eq ({ run: 2, step3: "step3" })
-      expect(result3.context).to eq ({ run: 3, step1: "step1", step2: "step2" })
+      expect(result1.state).to eq ({ run: 1, step1: "step1", step2: "step2" })
+      expect(result2.state).to eq ({ run: 2, step3: "step3" })
+      expect(result3.state).to eq ({ run: 3, step1: "step1", step2: "step2" })
     end
   end
 
   context "with a failed step" do
     let(:op_class) do
       Class.new(described_class) do
-
         step ->(state) { state[:track] = [1]; true }
         step ->(state) { state[:track] << 2; false }
         step ->(state) { state[:track] << 3; true }
@@ -121,7 +120,6 @@ RSpec.describe Operational::Operation do
   context "with a multiple failure steps" do
     let(:op_class) do
       Class.new(described_class) do
-
         step ->(state) { state[:track] = [1]; true }
         step ->(state) { state[:track] << 2; false }
         fail ->(state) { state[:track] << 3; false }
@@ -142,7 +140,6 @@ RSpec.describe Operational::Operation do
   context "with a recovery step" do
     let(:op_class) do
       Class.new(described_class) do
-
         step ->(state) { state[:track] = [1]; true }
         step ->(state) { state[:track] << 2; false }
         fail ->(state) { state[:track] << 3; true }
@@ -163,7 +160,6 @@ RSpec.describe Operational::Operation do
   context "with a pass step" do
     let(:op_class) do
       Class.new(described_class) do
-
         step ->(state) { state[:track] = [1]; true }
         pass ->(state) { state[:track] << 2; false }
         fail ->(state) { state[:track] << 3; true }

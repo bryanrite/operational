@@ -1,8 +1,8 @@
 module Operational
   class Result
-    def initialize(succeeded:, context:, operation:)
+    def initialize(succeeded:, state:, operation:)
       @succeeded = succeeded
-      @context = context.dup.freeze
+      @state = state.dup.freeze
       @operation = operation
     end
 
@@ -18,12 +18,12 @@ module Operational
       @operation
     end
 
-    def context
-      @context
+    def state
+      @state
     end
 
     def [](i)
-      @context[i]
+      @state[i]
     end
   end
 end

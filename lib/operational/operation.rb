@@ -12,11 +12,11 @@ module Operational
       add_step(:fail, action)
     end
 
-    def self.call(context={})
+    def self.call(state={})
       instance = self.new
-      instance.instance_variable_set(:@_operational_context, context)
+      instance.instance_variable_set(:@_operational_state, state)
       instance.instance_variable_set(:@_operational_path, [])
-      instance.instance_variable_set(:@_operational_result, true)
+      instance.instance_variable_set(:@_operational_succeeded, true)
 
       failure_circuit = false
 
@@ -27,22 +27,22 @@ module Operational
         next if failure_circuit && type != :fail
 
         result = if action.is_a?(Symbol)
-          instance.send(action, instance.send(:_operational_context))
+          instance.send(action, instance.send(:_operational_state))
         elsif action.respond_to?(:call)
-          action.call(instance.send(:_operational_context))
+          action.call(instance.send(:_operational_state))
         else
           raise UnknownStepType
         end
 
-        instance.instance_variable_set(:@_operational_result, result ? true : false)
+        instance.instance_variable_set(:@_operational_succeeded, result ? true : false)
         instance.instance_variable_get(:@_operational_path) << (result ? true : false)
 
-        failure_circuit = !instance.instance_variable_get(:@_operational_result) && type != :pass
+        failure_circuit = !instance.instance_variable_get(:@_operational_succeeded) && type != :pass
       end
 
       return Result.new(
-        succeeded: (instance.instance_variable_get(:@_operational_result) ? true : false),
-        context: instance.instance_variable_get(:@_operational_context),
+        succeeded: (instance.instance_variable_get(:@_operational_succeeded) ? true : false),
+        state: instance.instance_variable_get(:@_operational_state),
         operation: instance)
     end
 
@@ -58,8 +58,8 @@ module Operational
       self.class.class_variable_defined?(:@@_operational_steps) ? self.class.class_variable_get(:@@_operational_steps) : []
     end
 
-    def _operational_context
-      @_operational_context
+    def _operational_state
+      @_operational_state
     end
   end
 end

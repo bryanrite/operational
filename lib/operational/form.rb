@@ -15,9 +15,5 @@ module Operational
     def validation_errors_exist?
       !errors.blank?
     end
-
-    def sync(state)
-      raise MethodNotImplemented, "Contract::Sync was called without defining a #sync method in the form."
-    end
   end
 end
