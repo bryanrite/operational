@@ -15,5 +15,11 @@ module Operational
     def validation_errors_exist?
       !errors.blank?
     end
+
+    protected
+
+    def _operational_state_variable
+      :@state
+    end
   end
 end

@@ -27,6 +27,13 @@ RSpec.describe Operational::Operation::Contract do
       expect(state[:contract]).to be_a CreateForm
     end
 
+    it "does not expose the state variable as an attribute" do
+      described_class::Build(contract: CreateForm).call(state)
+
+      expect(state[:contract].instance_variable_get(:@state)).to eq state
+      expect(state[:contract].attributes).to_not include :state
+    end
+
     describe "name" do
       it "allows overriding the state key" do
         build_step = described_class::Build(contract: CreateForm, name: :test)
@@ -242,6 +249,25 @@ RSpec.describe Operational::Operation::Contract do
         expect(state[:contract].valid?).to eq false
         expect(state[:contract].errors).to be_present
         expect(state[:contract].errors.full_messages).to eq ["Name can't be blank"]
+      end
+    end
+
+    context "requiring the state for validiations" do
+      let(:form_class) do
+        Class.new(Operational::Form) do
+          validate :state_is_present_validator
+
+          def state_is_present_validator
+            @state.present? &&
+            @state.frozen? &&
+            @state[:params] == { name: "update", email: "update@test.com" } &&
+            @state[:contract] == self
+          end
+        end
+      end
+
+      it "exposes the frozen state via the instance var" do
+        expect(described_class::Validate().call(state)).to eq true
       end
     end
 
