@@ -9,11 +9,7 @@ module Operational
     end
 
     def other_validators_have_passed?
-      errors.empty?
-    end
-
-    def validation_errors_exist?
-      !errors.blank?
+      errors.blank?
     end
 
     protected

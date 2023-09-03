@@ -31,30 +31,29 @@ Or install it yourself as:
 
 The main concepts introduced by Operational are:
 
-**Operations** are an orchestrator, or wrapper, around a business process. They don't _do_ a lot themselves but provide a functional interface for executing all the business logic in an action while keeping the data persistence and services objects isolated and decoupled.
+**Operations** are an orchestrator, or wrapper, around a business process. They don't _do_ a lot themselves but provide an interface for executing all the business logic in an action while keeping the data persistence and service objects isolated and decoupled.
 
-**Railway Oriented/Monad Programming** is a functional way to define the business logic steps in an action, simplifying the handling of happy paths and failure paths in easy to understand tracks. You define steps that execute in order, the result of the step (truthy or falsey) moves execution to the success or failure tracks.
+**Railway Oriented/Monad Programming** is a functional way to define the business logic steps in an action, simplifying the handling of happy paths and failure paths in easy to understand tracks. You define steps that execute in order, the result of the step (truthy or falsey) moves execution to the success or failure tracks. Reduce complicated conditionals with explict methods.
 
 **Functional State** is the idea that each step in an operation receives parameters from the previous step, much like Unix pipe passing output from one command to the next. This state is a single hash that allows you to encapsulate all the information an operation might need, like `current_user`, `params`, or `remote_ip` and provide it in a single point of access. It is mutable within the execution of the operation, so steps may add to it, but immutable at the end of the operation.
 
 **Form Objects** help decouple data persistence from your view. They allow you to define a form or API that may touch many different ActiveRecord models without needing to couple those models together. Validation can be done in the form, where it is more contextually appropriate, rather than on the model. Form Objects more securely define what attributes a request may submit without the need for `StrongParameters`, as they are not directly database backed and do not suffer from mass assignment issues StrongParameters tries to solve.
 
 
-
 ## Getting Started
 
-Bringing the above concepts to bear, a typical Rails action usnig Operational may look like:
+Bringing the above concepts to bear, a typical Rails action using Operational may look like:
 
 ```ruby
-
 # app/controllers/todos_controller.rb
 class TodosController < ActionController::Base
   include Operational::Controller
 
-  # By default, params and current_user are set to the state for each operation.
+  # By default, params and current_user are set to the state for each operation, this can
+  # be overridden at the controller level.
 
   def new
-    # Run the "Present" part of the operation, which sets up the model and form.
+    # Run the Present part of the operation, which typically sets up the model and form.
     run Todos::CreateOperation::Present
   end
 
@@ -86,7 +85,7 @@ end
 module Todos
   class CreateOperation < Operational::Operation
 
-    # Create a model(s), build a form.
+    # Create a model(s), build a form object.
     class Present < Operational::Operation
       step :setup_new_model
       step Contract::Build(contract: CreateForm, model_key: :todo)
@@ -118,11 +117,13 @@ module Todos
   end
 ```
 
-_Theres a heck of a lot more, but I'll get to that soon in a proper Wiki._
+_Theres a heck of a lot more, but I'll get to that soon in a proper detailed Wiki guide._
+
 
 ## RDocs
 
 To come.
+
 
 ## Contributing
 
