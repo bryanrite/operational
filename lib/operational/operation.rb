@@ -20,7 +20,7 @@ module Operational
 
       failure_circuit = false
 
-      instance.send(:_operational_steps).each_with_index do |railway_step, i|
+      instance.send(:_operational_steps).each do |railway_step|
         type, action = railway_step
 
         next if !failure_circuit && type == :fail
