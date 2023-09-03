@@ -6,7 +6,7 @@ This is what **Operational** attempts to solve.
 
 Operational introduces the concepts of functional _Operations_ and _Form Objects_, to solve these problems, relying on Ruby on Rails' ActiveModel to keep the code **small** and **dependency free**. This enables very powerful organization of code with a light touch.
 
-This gem is heavily inspired by [Trailblazer](https://github.com/trailblazer/trailblazer) and [dry-rb](https://dry-rb.org/), both of which I have used extensively for many years. Operational solves a similar but much small subset of problems and relies on ActiveModel conventions, rather than being framework agnostic; meaning there is far less code, moving parts, and no dependencies.
+This gem is heavily inspired by [Trailblazer](https://github.com/trailblazer/trailblazer) and [dry-rb](https://dry-rb.org/), both of which I have used extensively for many years. Operational solves a similar but more focused set of problems and relies on ActiveModel and other Rails conventions, rather than being framework agnostic; meaning there is far less code, moving parts, and no dependencies.
 
 Read more about Operational's motivations here: [https://bryanrite.com/simplifying-complex-rails-apps-with-operations/](https://bryanrite.com/simplifying-complex-rails-apps-with-operations/)
 
