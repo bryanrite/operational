@@ -175,5 +175,17 @@ RSpec.describe Operational::Operation do
     it "sets the result boolean" do
       expect(OpClass.call.succeeded?).to eq true
     end
+
+    context "when ending in a pass step" do
+      let(:op_class) do
+        Class.new(described_class) do
+          pass ->(state) { state[:track] = [1]; false }
+        end
+      end
+
+      it "sets succeeded as true" do
+        expect(OpClass.call.succeeded?).to eq true
+      end
+    end
   end
 end
