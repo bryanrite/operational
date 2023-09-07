@@ -34,6 +34,7 @@ module Operational
           raise UnknownStepType
         end
 
+        result = true if type == :pass
         instance.instance_variable_set(:@_operational_succeeded, result ? true : false)
         instance.instance_variable_get(:@_operational_path) << (result ? true : false)
 
