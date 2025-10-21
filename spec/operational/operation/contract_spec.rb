@@ -78,6 +78,27 @@ RSpec.describe Operational::Operation::Contract do
 
         expect(state[:contract].name).to eq "Test"
       end
+
+      describe "with default values on the form" do
+        let(:form_class) do
+          Class.new(Operational::Form) do
+            attribute :name, :string, default: "Default Name"
+            validates :name, presence: true
+          end
+        end
+
+        let(:model) do
+          model_class.new(name: nil, email: "test@test.com")
+        end
+
+        it "does not apply nil attributes from model to contract" do
+          state = { model: model }
+
+          described_class::Build(contract: CreateForm, model_key: :model).call(state)
+
+          expect(state[:contract].name).to eq "Default Name"
+        end
+      end
     end
 
     describe "model_persisted" do

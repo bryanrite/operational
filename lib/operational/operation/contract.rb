@@ -8,7 +8,7 @@ module Operational
           if model_key.present?
             raise InvalidContractModel if !state[model_key]&.respond_to?(:attributes)
             valid_form_attrs = state[name].attribute_names
-            valid_params = state[model_key].attributes.slice(*valid_form_attrs)
+            valid_params = state[model_key].attributes.slice(*valid_form_attrs).compact
             state[name].assign_attributes(valid_params)
           end
 
