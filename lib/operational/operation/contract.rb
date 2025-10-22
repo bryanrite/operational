@@ -15,6 +15,7 @@ module Operational
           state[name].instance_variable_set(:@_operational_model_persisted, (model_persisted.nil? ? state[model_key]&.persisted? || false : !!model_persisted))
           state[name].instance_variable_set(state[name].send(:_operational_state_variable), state.dup.freeze)
           state[name].send(prepopulate_method, state) if state[name].respond_to?(prepopulate_method)
+          state[name].changes_applied if state[name].respond_to?(:changes_applied)
           return true
         end
       end

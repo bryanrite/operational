@@ -1,6 +1,17 @@
 require 'spec_helper'
 
 RSpec.describe Operational::Operation::Contract do
+  let(:model_class) do
+    Class.new do
+      include ActiveModel::Model
+      include ActiveModel::Attributes
+      include ActiveModel::Dirty
+
+      attribute :name, :string
+      attribute :email, :string
+    end
+  end
+
   let(:form_class) do
     Class.new(Operational::Form) do
       attribute :name, :string
@@ -43,16 +54,6 @@ RSpec.describe Operational::Operation::Contract do
     end
 
     describe "model_key" do
-      let(:model_class) do
-        Class.new do
-          include ActiveModel::Model
-          include ActiveModel::Attributes
-
-          attribute :name, :string
-          attribute :email, :string
-        end
-      end
-
       let(:model) do
         model_class.new(name: "Test", email: "test@test.com")
       end
@@ -171,6 +172,32 @@ RSpec.describe Operational::Operation::Contract do
 
           expect(state[:contract].persisted?).to eq true
         end
+      end
+    end
+
+    describe "changes_applied" do
+      let(:model) do
+        model_class.new(name: "First", email: "first@test.com")
+      end
+
+      it "calls changes_applied after syncing from model" do
+        state = { model: model }
+
+        step = described_class.Build(contract: CreateForm, model_key: :model)
+        step.call(state)
+
+        contract = state[:contract]
+        expect(contract.name).to eq "First"
+        expect(contract.changed?).to be false
+        expect(contract.changes).to be_empty
+
+        contract.name = "Second"
+        expect(contract.name).to eq "Second"
+        expect(contract.changed?).to be true
+        expect(contract.name_changed?).to be true
+        expect(contract.name_was).to eq("First")
+        expect(contract.changes).to eq({ "name" => ["First", "Second"] })
+        expect(contract.name_change).to eq(["First", "Second"])
       end
     end
 
