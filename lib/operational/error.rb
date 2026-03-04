@@ -3,4 +3,5 @@ module Operational
   class InvalidContractModel < Error; end
   class MethodNotImplemented < Error; end
   class UnknownStepType < Error; end
+  class MethodCollision < Error; end
 end
