@@ -224,21 +224,21 @@ RSpec.describe Operational::Operation::Contract do
           described_class::Sync().call(state.merge(model: "not a model"))
         }.to raise_error Operational::InvalidContractModel
       end
-    end
 
-    describe "sync_method" do
-      it "calls a custom sync_method during sync" do
-        form_class = Class.new(Operational::Form) do
-          attribute :name, :string
-          def custom_sync(state)
-            state[:model].email = "synced@test.com"
+      describe "sync_method" do
+        it "calls a custom sync_method during sync" do
+          form_class = Class.new(Operational::Form) do
+            attribute :name, :string
+            def custom_sync(state)
+              state[:model].email = "synced@test.com"
+            end
           end
+          state = { model: model, params: { name: "update" } }
+          described_class::Build(contract: form_class).call(state)
+          described_class::Validate().call(state)
+          described_class::Sync(sync_method: :custom_sync).call(state)
+          expect(model.email).to eq "synced@test.com"
         end
-        state = { model: model, params: { name: "update" } }
-        described_class::Build(contract: form_class).call(state)
-        described_class::Validate().call(state)
-        described_class::Sync(sync_method: :custom_sync).call(state)
-        expect(model.email).to eq "synced@test.com"
       end
     end
   end
