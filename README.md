@@ -50,23 +50,23 @@ end
 
 # An operation — wires together validation, persistence, and business process with railway functional programming.
 class RegisterUserOperation < Operational::Operation
-  step :setup_user
-  step Contract::Build(contract: SignupForm, model_key: :user)
+  step :setup
+  step Contract::Build(contract: SignupForm)
   step Contract::Validate()
-  step Contract::Sync(model_key: :user)
+  step Contract::Sync()
   step :persist
   pass :send_welcome
 
-  def setup_user(state)
-    state[:user] = User.new(role: :member)
+  def setup(state)
+    state[:model] = User.new(role: :member)
   end
 
   def persist(state)
-    state[:user].save
+    state[:model].save
   end
 
   def send_welcome(state)
-    WelcomeMailer.welcome(state[:user]).deliver_later
+    WelcomeMailer.welcome(state[:model]).deliver_later
   end
 end
 ```
@@ -74,7 +74,7 @@ end
 ```ruby
 # In your controller — simple boolean branching.
 if run RegisterUserOperation
-  redirect_to dashboard_path, notice: "Welcome #{@state[:user].name}!"
+  redirect_to dashboard_path, notice: "Welcome #{@state[:model].name}!"
 else
   render :new, status: :unprocessable_entity
 end
@@ -141,7 +141,7 @@ result[:order]     # => shorthand for result.state[:order]
 result.operation   # => the operation instance
 ```
 
-There is intentionally one entry point (`.call`) and one result type — no `.call!` or bang variants. Check `succeeded?` and branch accordingly.
+There is intentionally one entry point (`.call`) and one result type. Check `succeeded?` and branch accordingly.
 
 #### The Railway: step, pass, fail
 
@@ -179,7 +179,7 @@ Every operation revolves around a single **state hash**. It's created when you c
 
 ```ruby
 result = ChargeOrderOperation.call(params: { id: 1 }, current_user: admin)
-#                                   └──────────── initial state ───────────┘
+#                                 └──────────── initial state ───────────┘
 
 # Each step receives and mutates the same hash:
 #   step :find_order    →  state[:order] = Order.find_by(...)
@@ -229,7 +229,7 @@ end
 
 ### Forms
 
-Forms decouple input validation from your models. They allow you to build UI and APIs that aren't coupled to your database modeling and allow you define exactly what parameters you'll accept in a declarative way.
+Forms decouple input validation from your models. They allow you to build UI and APIs that aren't coupled to your database modeling and allow you to define exactly what parameters you'll accept in a declarative way.
 
 They're built on `ActiveModel::Model`, `ActiveModel::Attributes`, and `ActiveModel::Dirty` — so you already know the API.
 
@@ -270,7 +270,7 @@ form.sync(model: article)
 article.title  # => "Updated"
 ```
 
-Any params that don't match a defined form attribute are silently ignored — no need for `strong_parameters`.
+Any params that don't match a defined form attribute are ignored — no need for `strong_parameters`, your form defines what parameters you will accept.
 
 You can also pass **state** to `.build`, which is separate from the form's attributes — it's not user input, it's context. State is available as `@state` and is useful for conditional validation (e.g., only admins can publish) and prepopulating defaults from things the user doesn't control:
 
@@ -304,7 +304,7 @@ class NewArticleForm < Operational::Form
   end
 end
 
-# Build pulls from article (automatic) + current_user + team (via on_build)
+# Build pulls from article (automatic) + current_user/team (via on_build)
 form = NewArticleForm.build(model: article, state: { current_user: user, team: team, author: user })
 
 # Sync writes to article (automatic) + author (via on_sync)
@@ -349,17 +349,17 @@ Contract helpers wire forms into operations as steps. This is where Operations a
 Creates a form instance and stores it in the state:
 
 ```ruby
+# Simple — builds the form and pre-populates from state[:model]
 step Contract::Build(contract: ArticleForm)
-# state[:contract] is now an ArticleForm instance
 
-# With a model for pre-population:
+# With a custom model key — pre-populates from state[:article] instead
 step Contract::Build(contract: ArticleForm, model_key: :article)
 ```
 
 Options:
 - `contract:` — the form class (required)
 - `name:` — state key to store the form (default: `:contract`)
-- `model_key:` — state key containing the model to pre-populate from
+- `model_key:` — state key containing the model to build from (default: `:model`)
 - `model_persisted:` — override `persisted?` detection
 - `build_method:` — method to call during build (default: `:on_build`)
 
@@ -368,16 +368,14 @@ Options:
 Validates the form using params from the state:
 
 ```ruby
+# Simple — validates state[:contract] with state[:params]
 step Contract::Validate()
-# Validates state[:contract] with state[:params]
 
-# With nested params:
+# With nested params — validates with state[:params][:article]
 step Contract::Validate(params_path: :article)
-# Validates with state[:params][:article]
 
-# With a custom path:
+# With a custom path — validates with state.dig(:custom, :path)
 step Contract::Validate(params_path: [:custom, :path])
-# Validates with state[:custom][:path]
 ```
 
 Options:
@@ -391,12 +389,16 @@ Returns `true` if validation passes, `false` otherwise — making it a natural r
 Syncs form data back to a model:
 
 ```ruby
+# Simple — syncs form attributes back to state[:model]
+step Contract::Sync()
+
+# With a custom model key — syncs back to state[:article] instead
 step Contract::Sync(model_key: :article)
 ```
 
 Options:
 - `name:` — state key where the form is stored (default: `:contract`)
-- `model_key:` — state key containing the model to sync to
+- `model_key:` — state key containing the model to sync to (default: `:model`)
 - `sync_method:` — custom sync hook method name (default: `:on_sync`)
 
 #### Putting It Together
@@ -413,25 +415,38 @@ end
 
 # app/concepts/article/create_article_operation.rb
 class CreateArticleOperation < Operational::Operation
-  step :build_article
-  step Contract::Build(contract: ArticleForm, model_key: :article)
+  step :init
+  step Contract::Build(contract: ArticleForm)
   step Contract::Validate()
-  step Contract::Sync(model_key: :article)
+  step Contract::Sync()
   step :save
 
-  def build_article(state)
-    state[:article] = Article.new
+  def init(state)
+    state[:model] = Article.new
   end
 
   def save(state)
-    state[:article].save
+    state[:model].save
   end
 end
 
-# Usage
+# Direct usage
 result = CreateArticleOperation.call(params: { title: "Hello", body: "World" })
 result.succeeded? # => true
-result[:article]  # => #<Article id: 1, title: "Hello", ...>
+result[:model]    # => #<Article id: 1, title: "Hello", ...>
+
+# From a controller
+class ArticlesController < ApplicationController
+  include Operational::Controller
+
+  def create
+    if run CreateArticleOperation
+      redirect_to @state[:model], notice: "Article created!"
+    else
+      render :new, status: :unprocessable_entity
+    end
+  end
+end
 ```
 
 ### Composing Operations
@@ -442,10 +457,10 @@ Just like Rails controllers pair `new`/`create` and `edit`/`update`, operations 
 class CreateArticleOperation < Operational::Operation
   # The "new" part — builds the model and sets up the form
   class Present < Operational::Operation
-    step :build_article
+    step :init
     step Contract::Build(contract: ArticleForm, model_key: :article)
 
-    def build_article(state)
+    def init(state)
       state[:article] = Article.new(author: state[:current_user])
     end
   end
@@ -589,7 +604,7 @@ The `new` action runs just `Present` to build an empty form. The `create` action
 
 ## Testing
 
-Testing Operations and Forms is straight forward. Operations and Forms are just plain ruby objects that can be easily tested as unit tests.
+Testing Operations and Forms is straightforward. They are plain Ruby objects that can be tested as unit tests — no controller or request specs needed.
 
 ### Testing Operations
 

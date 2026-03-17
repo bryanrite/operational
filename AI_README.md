@@ -17,21 +17,21 @@ Subclass `Operational::Operation`. Define steps with `step`, `pass`, or `fail` a
 
 ```ruby
 class CreateArticleOperation < Operational::Operation
-  step :build
-  step Contract::Build(contract: ArticleForm, model_key: :article)
+  step :init
+  step Contract::Build(contract: ArticleForm)
   step Contract::Validate()
-  step Contract::Sync(model_key: :article)
+  step Contract::Sync()
   step :save
   pass :notify    # return value ignored, never derails
   fail :handle    # only runs on failure track
 
-  def build(state)
-    state[:article] = Article.new
+  def init(state)
+    state[:model] = Article.new
     # must return truthy to continue, falsy switches to failure track
   end
 
   def save(state)
-    state[:article].save  # returns true/false naturally
+    state[:model].save  # returns true/false naturally
   end
 
   def notify(state)
@@ -88,20 +88,20 @@ Use `Nested::Operation` to call one operation from within another. State is merg
 class CreateArticleOperation < Operational::Operation
   class Present < Operational::Operation
     step :init
-    step Contract::Build(contract: ArticleForm, model_key: :article)
+    step Contract::Build(contract: ArticleForm)
 
     def init(state)
-      state[:article] = Article.new
+      state[:model] = Article.new
     end
   end
 
   step Nested::Operation(operation: Present)
   step Contract::Validate()
-  step Contract::Sync(model_key: :article)
+  step Contract::Sync()
   pass :persist
 
   def persist(state)
-    state[:article].save!
+    state[:model].save!
   end
 end
 ```
@@ -180,7 +180,7 @@ These are used inside operations as step actions. They return lambdas.
 step Contract::Build(
   contract: MyForm,          # required — the form class
   name: :contract,           # state key to store the form instance
-  model_key: nil,            # state key containing the model to build from
+  model_key: :model,         # state key containing the model to build from (used only if present in state)
   model_persisted: nil,      # override persisted? detection
   build_method: :on_build
 )
@@ -206,7 +206,7 @@ Returns the result of `form.validate(params)` — `true`/`false`.
 ```ruby
 step Contract::Sync(
   name: :contract,       # state key where the form is stored
-  model_key: nil,        # state key containing the model to sync to
+  model_key: :model,     # state key containing the model to sync to
   sync_method: :on_sync  # custom sync hook method name
 )
 ```
@@ -221,7 +221,7 @@ class MyController < ApplicationController
 
   def create
     if run CreateArticleOperation
-      redirect_to @state[:article]
+      redirect_to @state[:model]
     else
       render :new, status: :unprocessable_entity
     end
@@ -267,25 +267,33 @@ Example: `app/concepts/article/article_form.rb`, `app/concepts/article/create_ar
 class CreateThingOperation < Operational::Operation
   class Present < Operational::Operation
     step :init
-    step Contract::Build(contract: ThingForm, model_key: :thing)
+    step Contract::Build(contract: ThingForm)
 
     def init(state)
-      state[:thing] = Thing.new
+      state[:model] = Thing.new
     end
   end
 
   step Nested::Operation(operation: Present)
   step Contract::Validate()
-  step Contract::Sync(model_key: :thing)
+  step Contract::Sync()
   pass :persist
 
   def persist(state)
-    state[:thing].save!
+    state[:model].save!
   end
 end
 ```
 
 Controller uses `CreateThingOperation::Present` for `new` and `CreateThingOperation` for `create`.
+
+To use a descriptive state key instead of `:model`, pass `model_key:` explicitly:
+
+```ruby
+step Contract::Build(contract: ThingForm, model_key: :thing)
+step Contract::Sync(model_key: :thing)
+# state[:thing] instead of state[:model]
+```
 
 ### Multi-model form
 
