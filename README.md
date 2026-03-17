@@ -4,18 +4,19 @@
 </h1>
 
 <p align="center">
-  <strong>Lightweight, railway-oriented operation and form objects for buisness logic.</strong>
+  <strong>Lightweight, railway-oriented operation and form objects for business logic.</strong>
 </p>
+
+Operational wraps your business logic into **Operations** — small classes with a railway of steps that succeed or fail. Pair them with **Forms** to decouple your UI and APIs from your models and **Contracts** to wire it all together.
+
+One dependency: `activemodel`. ~200 lines of plain ruby code. It's not a framework — it's a pattern. You probably already know how Operational works.
+
+> [!NOTE]
+> **AI agents:** See [AI_README.md](AI_README.md) for a concise API reference optimized for code generation.
 
 [![Gem Version](https://img.shields.io/gem/v/operational.svg)](https://rubygems.org/gems/operational)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-Operational wraps your business logic into **operations** — small classes with a railway of steps that succeed or fail. Pair them with **Operational Forms** to decouple your UI and APIs from your models and **Contracts** to wire it all together.
-
-One dependency: `activemodel`. If you've used Rails, you already know how Operational works. Use it to simplify and clean up complex business logic into isolated, easily testable classes.
-
-> [!NOTE]
-> **AI agents:** See [AI_README.md](AI_README.md) for a concise API reference optimized for code generation.
 
 ## Table of Contents
 
@@ -38,7 +39,7 @@ One dependency: `activemodel`. If you've used Rails, you already know how Operat
 ## Quick Example
 
 ```ruby
-# A form object — validates input without touching your model
+# A form object — validates input without being linked to a specific model.
 class SignupForm < Operational::Form
   attribute :name, :string
   attribute :email, :string
@@ -47,37 +48,31 @@ class SignupForm < Operational::Form
   validates :email, presence: true, format: { with: URI::MailTo::EMAIL_REGEXP }
 end
 
-# An operation — wires together validation, persistence, and side effects with railway functional programming.
+# An operation — wires together validation, persistence, and business process with railway functional programming.
 class RegisterUserOperation < Operational::Operation
-  step :build_user
+  step :setup_user
   step Contract::Build(contract: SignupForm, model_key: :user)
   step Contract::Validate()
   step Contract::Sync(model_key: :user)
-  step :save
+  step :persist
   pass :send_welcome
-  fail :log_failure
 
-  def build_user(state)
+  def setup_user(state)
     state[:user] = User.new(role: :member)
   end
 
-  def save(state)
+  def persist(state)
     state[:user].save
   end
 
   def send_welcome(state)
     WelcomeMailer.welcome(state[:user]).deliver_later
   end
-
-  def log_failure(state)
-    Rails.logger.warn("Signup failed: #{state[:contract].errors.full_messages}")
-    false
-  end
 end
 ```
 
 ```ruby
-# In your controller — two lines
+# In your controller — simple boolean branching.
 if run RegisterUserOperation
   redirect_to dashboard_path, notice: "Welcome #{@state[:user].name}!"
 else
@@ -103,7 +98,7 @@ Operational gives you a place for all of that. Each operation describes a busine
 
 **Operational can help when:**
 
-- UI and APIs are touching multiple models (`accepts_nested_attributes_for`)
+- UI and API requests are touching multiple models (`accepts_nested_attributes_for`)
 - Model validations need to change by outside context (e.g., only admins can publish)
 - Model callbacks are doing too much (`after_create`, `after_save`, etc.)
 - Business processes are duplicated between controllers, jobs, and scripts
@@ -116,7 +111,7 @@ Operational gives you a place for all of that. Each operation describes a busine
 
 An operation is a class that defines a sequence of steps executed in order. Each step either succeeds (returns truthy) or fails (returns falsy), controlling the flow through the railway.
 
-**Operations orchestrate, they don't implement.** Keep your steps thin — they should try to delegate to plain Ruby objects, service classes, and model methods. An operation's job is to define the order things happen and what to do when something fails, in other words, _orchestrate the business process but not to contain the business logic itself_. If a step is getting long, extract the work into a PORO and call it from the step.
+**Operations orchestrate, they don't implement.** Keep your steps thin — they should try to delegate to plain Ruby objects, service classes, and model methods. An operation's job is to define the order things happen and what to do when something fails, in other words, _**orchestrate**_ the business process but don't contain the business logic itself. If a step is getting long, extract the work into a ruby service object and call it from the step.
 
 #### Defining Steps
 
@@ -178,6 +173,24 @@ class PublishArticleOperation < Operational::Operation
 end
 ```
 
+#### State
+
+Every operation revolves around a single **state hash**. It's created when you call the operation, passed to every step, and returned in the result. Steps read from it, write to it, and use it to pass data to each other — similar to how Unix pipes pass data through a chain of commands:
+
+```ruby
+result = ChargeOrderOperation.call(params: { id: 1 }, current_user: admin)
+#                                   └──────────── initial state ───────────┘
+
+# Each step receives and mutates the same hash:
+#   step :find_order    →  state[:order] = Order.find_by(...)
+#   step :charge_payment  →  state[:charge] = PaymentGateway.charge(...)
+
+result.state     # => frozen snapshot of the final state
+result[:order]   # => the order that was charged
+```
+
+This single shared hash means steps are fully decoupled — they don't know about each other, they just read and write to state. You can reorder, add, or remove steps without changing method signatures. And because state is frozen after the operation completes, the result is an immutable snapshot of everything that happened.
+
 #### A Realistic Example
 
 ```ruby
@@ -185,7 +198,7 @@ class ChargeOrderOperation < Operational::Operation
   step :find_order
   step :charge_payment
   pass :track_analytics
-  step :send_confirmation
+  pass :send_confirmation
   fail :refund
 
   def find_order(state)
@@ -205,7 +218,6 @@ class ChargeOrderOperation < Operational::Operation
 
   def send_confirmation(state)
     OrderMailer.confirmation(state[:order]).deliver_later
-    true
   end
 
   def refund(state)
@@ -217,7 +229,7 @@ end
 
 ### Forms
 
-Forms decouple input validation from your models. They allow you to build UI and APIs that aren't coupled to your database modeling and allow you define exactly what you're willing to accept.
+Forms decouple input validation from your models. They allow you to build UI and APIs that aren't coupled to your database modeling and allow you define exactly what parameters you'll accept in a declarative way.
 
 They're built on `ActiveModel::Model`, `ActiveModel::Attributes`, and `ActiveModel::Dirty` — so you already know the API.
 
@@ -258,10 +270,7 @@ form.sync(model: article)
 article.title  # => "Updated"
 ```
 
-Any params that don't match a defined form attribute are silently ignored — no need for `strong_parameters`. `ActionController::Parameters` are handled automatically.
-
-> [!NOTE]
-> Inside an operation, [`Contract` helpers](#contracts) handle this entire lifecycle as steps — you won't call these methods directly.
+Any params that don't match a defined form attribute are silently ignored — no need for `strong_parameters`.
 
 You can also pass **state** to `.build`, which is separate from the form's attributes — it's not user input, it's context. State is available as `@state` and is useful for conditional validation (e.g., only admins can publish) and prepopulating defaults from things the user doesn't control:
 
@@ -269,9 +278,12 @@ You can also pass **state** to `.build`, which is separate from the form's attri
 form = ArticleForm.build(model: article, state: { current_user: current_user, team: team })
 ```
 
-#### Multi-Model Forms: Prepopulate and Sync Hooks
+> [!NOTE]
+> Inside an operation, [`Contract` helpers](#contracts) handle this entire lifecycle as steps — you won't call these methods directly, and state is passed automatically.
 
-For simple single-model forms, the automatic attribute matching handles everything. For more complex cases — where a single form spans multiple models — you can define `prepopulate` and `on_sync` hooks to control how data flows in and out:
+#### Multi-Model Forms: on_build and on_sync Hooks
+
+For simple single-model forms, the automatic attribute matching handles everything. For more complex cases — where a single form spans multiple models — you can define `on_build` and `on_sync` hooks to control how data flows in and out:
 
 ```ruby
 class NewArticleForm < Operational::Form
@@ -281,7 +293,7 @@ class NewArticleForm < Operational::Form
   attribute :default_category, :string
 
   # Pull data IN from multiple sources when the form is built
-  def prepopulate(state)
+  def on_build(state)
     self.author_bio = state[:current_user]&.bio
     self.default_category = state[:team]&.default_category
   end
@@ -292,7 +304,7 @@ class NewArticleForm < Operational::Form
   end
 end
 
-# Build pulls from article (automatic) + current_user + team (via prepopulate)
+# Build pulls from article (automatic) + current_user + team (via on_build)
 form = NewArticleForm.build(model: article, state: { current_user: user, team: team, author: user })
 
 # Sync writes to article (automatic) + author (via on_sync)
@@ -349,7 +361,7 @@ Options:
 - `name:` — state key to store the form (default: `:contract`)
 - `model_key:` — state key containing the model to pre-populate from
 - `model_persisted:` — override `persisted?` detection
-- `prepopulate_method:` — method to call for prepopulation (default: `:prepopulate`)
+- `build_method:` — method to call during build (default: `:on_build`)
 
 #### Contract.Validate
 
@@ -387,23 +399,19 @@ Options:
 - `model_key:` — state key containing the model to sync to
 - `sync_method:` — custom sync hook method name (default: `:on_sync`)
 
-#### Full Worked Example
+#### Putting It Together
 
 ```ruby
-# app/forms/article_form.rb
+# app/concepts/article/article_form.rb
 class ArticleForm < Operational::Form
   attribute :title, :string
   attribute :body, :string
 
   validates :title, presence: true
   validates :body, presence: true
-
-  def on_sync(state)
-    state[:article].published_at = Time.current if state[:publish]
-  end
 end
 
-# app/operations/create_article_operation.rb
+# app/concepts/article/create_article_operation.rb
 class CreateArticleOperation < Operational::Operation
   step :build_article
   step Contract::Build(contract: ArticleForm, model_key: :article)
@@ -456,9 +464,9 @@ class CreateArticleOperation < Operational::Operation
 end
 ```
 
-The `CreateArticleOperation::Present` operation can be used on the `new` controller action and the `CreateArticleOperation` can be used on the `create` controller action, without duplicating the setup needed to present the form and save it... something often done by extracting helpers in the controller.
+Use `CreateArticleOperation::Present` for the `new` action and `CreateArticleOperation` for `create` — no need to duplicate setup or extract controller helpers.
 
-### Rails Integration
+## Rails Integration
 
 Include `Operational::Controller` in your controllers to get the `run` helper:
 
@@ -581,6 +589,8 @@ The `new` action runs just `Present` to build an empty form. The `create` action
 
 ## Testing
 
+Testing Operations and Forms is straight forward. Operations and Forms are just plain ruby objects that can be easily tested as unit tests.
+
 ### Testing Operations
 
 ```ruby
@@ -636,7 +646,7 @@ end
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/bryanrite/operational. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [Contributor Covenant](http://contributor-covenant.org) code of conduct.
+Bug reports and pull requests are welcome on [GitHub](https://github.com/bryanrite/operational).
 
 ## License
 

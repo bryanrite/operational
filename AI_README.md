@@ -98,10 +98,10 @@ class CreateArticleOperation < Operational::Operation
   step Nested::Operation(operation: Present)
   step Contract::Validate()
   step Contract::Sync(model_key: :article)
-  step :save
+  pass :persist
 
-  def save(state)
-    state[:article].save
+  def persist(state)
+    state[:article].save!
   end
 end
 ```
@@ -127,13 +127,13 @@ Form.build(
   model: nil,              # ActiveModel instance — copies matching attributes to form
   model_persisted: nil,    # override persisted? detection (true/false/nil)
   state: {},               # context hash, available as @state in the form
-  prepopulate_method: :prepopulate  # method to call after build
+  build_method: :on_build  # method to call during build
 )
 ```
 
 - Only attributes defined on the form are copied from the model (nil values are skipped)
 - State is frozen and stored as `@state`
-- If the form defines `prepopulate(state)`, it is called after attribute assignment
+- If the form defines `on_build(state)`, it is called during build after attribute assignment
 - `changes_applied` is called after build so dirty tracking starts clean
 
 ### Form.validate
@@ -180,9 +180,9 @@ These are used inside operations as step actions. They return lambdas.
 step Contract::Build(
   contract: MyForm,          # required — the form class
   name: :contract,           # state key to store the form instance
-  model_key: nil,            # state key containing the model to prepopulate from
+  model_key: nil,            # state key containing the model to build from
   model_persisted: nil,      # override persisted? detection
-  prepopulate_method: :prepopulate
+  build_method: :on_build
 )
 ```
 
@@ -294,7 +294,7 @@ class OrderForm < Operational::Form
   attribute :item_name, :string
   attribute :shipping_address, :string
 
-  def prepopulate(state)
+  def on_build(state)
     self.shipping_address = state[:user]&.default_address
   end
 
