@@ -120,32 +120,45 @@ RSpec.describe Operational::Form do
       end
     end
 
-    describe "prepopulate" do
+    describe "on_build" do
       let(:form_class) do
         Class.new(Operational::Form) do
           attribute :name, :string
 
-          def prepopulate(state)
+          def on_build(state)
             self.name = "prepopulated"
           end
         end
       end
 
-      it "calls prepopulate if defined" do
+      it "calls on_build if defined" do
         form = form_class.build
         expect(form.name).to eq "prepopulated"
       end
 
-      it "allows overriding the prepopulate method name" do
+      it "passes state to on_build" do
         form_class = Class.new(Operational::Form) do
           attribute :name, :string
 
-          def custom_prepopulate(state)
+          def on_build(state)
+            self.name = state[:default_name]
+          end
+        end
+
+        form = form_class.build(state: { default_name: "from state" })
+        expect(form.name).to eq "from state"
+      end
+
+      it "allows overriding the build method name" do
+        form_class = Class.new(Operational::Form) do
+          attribute :name, :string
+
+          def custom_build(state)
             self.name = "custom"
           end
         end
 
-        form = form_class.build(prepopulate_method: :custom_prepopulate)
+        form = form_class.build(build_method: :custom_build)
         expect(form.name).to eq "custom"
       end
     end
@@ -307,6 +320,19 @@ RSpec.describe Operational::Form do
 
         expect(state[:custom]).to eq true
       end
+    end
+  end
+
+  describe "#other_validators_have_passed?" do
+    it "returns true when there are no errors" do
+      form = form_class.build
+      expect(form.other_validators_have_passed?).to eq true
+    end
+
+    it "returns false when there are errors" do
+      form = form_class.build
+      form.validate(name: "")
+      expect(form.other_validators_have_passed?).to eq false
     end
   end
 

@@ -1,16 +1,16 @@
 module Operational
   class Operation
     module Contract
-      def self.Build(contract:, name: :contract, model_key: nil, model_persisted: nil, prepopulate_method: :prepopulate)
+      def self.Build(contract:, name: :contract, model_key: :model, model_persisted: nil, build_method: :on_build)
         lambda do |state|
-          model = model_key.present? ? state[model_key] : nil
-          raise InvalidContractModel if model_key.present? && model.nil?
+          model = state.key?(model_key) ? state[model_key] : nil
+          raise InvalidContractModel if state.key?(model_key) && model.nil?
 
           state[name] = contract.build(
             model: model,
             model_persisted: model_persisted,
             state: state,
-            prepopulate_method: prepopulate_method
+            build_method: build_method
           )
           true
         end
@@ -29,10 +29,10 @@ module Operational
         end
       end
 
-      def self.Sync(name: :contract, model_key: nil, sync_method: :on_sync)
+      def self.Sync(name: :contract, model_key: :model, sync_method: :on_sync)
         lambda do |state|
-          model = model_key.present? ? state[model_key] : nil
-          raise InvalidContractModel if model_key.present? && model.nil?
+          model = state.key?(model_key) ? state[model_key] : nil
+          raise InvalidContractModel if state.key?(model_key) && model.nil?
 
           state[name].sync(model: model, state: state, sync_method: sync_method)
         end

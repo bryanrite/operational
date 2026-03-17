@@ -18,7 +18,7 @@ module Operational
       end
     end
 
-    def self.build(model: nil, model_persisted: nil, state: {}, prepopulate_method: :prepopulate)
+    def self.build(model: nil, model_persisted: nil, state: {}, build_method: :on_build)
       form = new
 
       if model
@@ -30,7 +30,7 @@ module Operational
 
       form.instance_variable_set(:@_operational_model_persisted, (model_persisted.nil? ? model&.persisted? || false : !!model_persisted))
       form.instance_variable_set(form.send(:_operational_state_variable), state.dup.freeze)
-      form.send(prepopulate_method, state) if form.respond_to?(prepopulate_method)
+      form.send(build_method, state) if form.respond_to?(build_method)
       form.changes_applied if form.respond_to?(:changes_applied)
       form
     end
