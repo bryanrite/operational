@@ -1,48 +1,643 @@
-# Operational
+<h1 align="center">
+  <img src="logo.png" alt="" width="60" valign="middle">
+  Operational
+</h1>
 
-Applications usually start out simple, actions are largely CRUD-y and isolated to a single database backed model. As they grow and complicated business logic creeps in, something to orchestrate the action helps to keep concerns separated and decouple business logic from data persistence.
+<p align="center">
+  <strong>Lightweight, railway-oriented operation and form objects for buisness logic.</strong>
+</p>
 
-This is what **Operational** attempts to solve.
+[![Gem Version](https://img.shields.io/gem/v/operational.svg)](https://rubygems.org/gems/operational)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-Operational introduces a number of concepts to solve these problems while relying on Ruby on Rails' ActiveModel to keep the code **small** and **dependency free**. This enables powerful organization of code, high readability, and a DSL like collection of business actions with a very light touch.
+Operational wraps your business logic into **operations** — small classes with a railway of steps that succeed or fail. Pair them with **Operational Forms** to decouple your UI and APIs from your models and **Contracts** to wire it all together.
 
-This gem is heavily inspired by [Trailblazer](https://github.com/trailblazer/trailblazer) and [dry-rb](https://dry-rb.org/), both of which I have used extensively for many years. Operational solves a similar but much small subset of problems and relies on ActiveModel conventions, rather than being framework agnostic; meaning there is far less code, moving parts, and no dependencies.
+One dependency: `activemodel`. If you've used Rails, you already know how Operational works. Use it to simplify and clean up complex business logic into isolated, easily testable classes.
 
-Read more about Operational's motivations here: [https://bryanrite.com/simplifying-complex-rails-apps-with-operations/](https://bryanrite.com/simplifying-complex-rails-apps-with-operations/)
+> [!NOTE]
+> **AI agents:** See [AI_README.md](AI_README.md) for a concise API reference optimized for code generation.
+
+## Table of Contents
+
+- [Quick Example](#quick-example)
+- [Installation](#installation)
+- [Why You Need Operational](#why-you-need-operational)
+- [Core Concepts](#core-concepts)
+  - [Operations](#operations)
+  - [Forms](#forms)
+  - [Contracts](#contracts)
+  - [Composing Operations](#composing-operations)
+- [Rails Integration](#rails-integration)
+- [Project Structure](#project-structure)
+- [Full Example](#full-example)
+- [Testing](#testing)
+- [Requirements](#requirements)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Quick Example
+
+```ruby
+# A form object — validates input without touching your model
+class SignupForm < Operational::Form
+  attribute :name, :string
+  attribute :email, :string
+
+  validates :name, presence: true
+  validates :email, presence: true, format: { with: URI::MailTo::EMAIL_REGEXP }
+end
+
+# An operation — wires together validation, persistence, and side effects with railway functional programming.
+class RegisterUserOperation < Operational::Operation
+  step :build_user
+  step Contract::Build(contract: SignupForm, model_key: :user)
+  step Contract::Validate()
+  step Contract::Sync(model_key: :user)
+  step :save
+  pass :send_welcome
+  fail :log_failure
+
+  def build_user(state)
+    state[:user] = User.new(role: :member)
+  end
+
+  def save(state)
+    state[:user].save
+  end
+
+  def send_welcome(state)
+    WelcomeMailer.welcome(state[:user]).deliver_later
+  end
+
+  def log_failure(state)
+    Rails.logger.warn("Signup failed: #{state[:contract].errors.full_messages}")
+    false
+  end
+end
+```
+
+```ruby
+# In your controller — two lines
+if run RegisterUserOperation
+  redirect_to dashboard_path, notice: "Welcome #{@state[:user].name}!"
+else
+  render :new, status: :unprocessable_entity
+end
+```
 
 ## Installation
 
-Add this line to your application's Gemfile:
+Add to your Gemfile:
 
 ```ruby
 gem 'operational'
 ```
 
-And then execute:
+Then run `bundle install`.
 
-    $ bundle
+## Why You Need Operational
 
-Or install it yourself as:
+Rails apps start simple — a model, a controller, some validations. Then the business logic creeps in. "Register a user" isn't just `User.create` anymore — it's validate the input, assign a role, send a welcome email, and notify the sales team. That logic ends up scattered across callbacks, controller actions, and service objects that everyone has to remember to call in the right order.
 
-    $ gem install operational
+Operational gives you a place for all of that. Each operation describes a business process as a readable sequence of steps that anyone on the team can follow — no digging through models and callbacks to understand what happens.
 
+**Operational can help when:**
 
-## Getting Started
+- UI and APIs are touching multiple models (`accepts_nested_attributes_for`)
+- Model validations need to change by outside context (e.g., only admins can publish)
+- Model callbacks are doing too much (`after_create`, `after_save`, etc.)
+- Business processes are duplicated between controllers, jobs, and scripts
+- Strong parameters are getting complex with deeply nested or context-dependent permits
+- Testing business logic requires full controller/request specs instead of simple unit tests
 
-See the [Operational Wiki](https://github.com/bryanrite/operational/wiki) for an explanation of the concepts introduced by Operational and show how to start using them in your own applications.
+## Core Concepts
 
+### Operations
 
-## RDocs
+An operation is a class that defines a sequence of steps executed in order. Each step either succeeds (returns truthy) or fails (returns falsy), controlling the flow through the railway.
 
-To come.
+**Operations orchestrate, they don't implement.** Keep your steps thin — they should try to delegate to plain Ruby objects, service classes, and model methods. An operation's job is to define the order things happen and what to do when something fails, in other words, _orchestrate the business process but not to contain the business logic itself_. If a step is getting long, extract the work into a PORO and call it from the step.
 
+#### Defining Steps
+
+Steps can be **symbols** (instance methods), **lambdas**, or any **callable** object:
+
+```ruby
+class ProcessOrderOperation < Operational::Operation
+  step :validate_inventory       # instance method
+  step ->(state) { ... }        # lambda
+  step Policies::OrderPolicy()  # callable object
+end
+```
+
+Every step receives a `state` hash and returns a truthy or falsy value.
+
+#### Running an Operation
+
+Call `.call` on the operation with an optional initial state hash. You get back a `Result`:
+
+```ruby
+result = ProcessOrderOperation.call(order: order, current_user: user)
+
+result.succeeded?  # => true / false
+result.failed?     # => true / false
+result.state       # => the full state hash (frozen)
+result[:order]     # => shorthand for result.state[:order]
+result.operation   # => the operation instance
+```
+
+There is intentionally one entry point (`.call`) and one result type — no `.call!` or bang variants. Check `succeeded?` and branch accordingly.
+
+#### The Railway: step, pass, fail
+
+Operations follow a **railway pattern** with two tracks — success and failure:
+
+- **`step`** — Runs on the success track. If it returns falsy, execution switches to the failure track.
+- **`fail`** — Runs on the failure track only. If it returns truthy, execution switches back to the success track (recovery).
+- **`pass`** — Always runs on the success track and always continues on the success track, regardless of return value. Useful for side effects.
+
+```ruby
+class PlaceOrderOperation < Operational::Operation
+  step :validate_cart      # success track — runs first
+  step :charge_card        # if this returns false → switches to failure track
+  step :send_confirmation  # SKIPPED if charge_card failed
+  fail :notify_support     # failure track — only runs after a failure
+  fail :refund             # continues on failure track
+end
+```
+
+**Recovery:** If a `fail` step returns truthy, execution moves back to the success track. This lets you handle errors and continue.
+
+**`pass` for side effects:** A `pass` step always continues on the success track regardless of its return value — useful for logging, analytics, or other fire-and-forget work:
+
+```ruby
+class PublishArticleOperation < Operational::Operation
+  step :publish
+  pass :track_analytics    # return value ignored — never derails the operation
+  step :notify_subscribers # always runs after pass
+end
+```
+
+#### A Realistic Example
+
+```ruby
+class ChargeOrderOperation < Operational::Operation
+  step :find_order
+  step :charge_payment
+  pass :track_analytics
+  step :send_confirmation
+  fail :refund
+
+  def find_order(state)
+    state[:order] = Order.find_by(id: state[:params][:id])
+    state[:order].present?
+  end
+
+  def charge_payment(state)
+    state[:charge] = PaymentGateway.charge(state[:order].total)
+    state[:charge].success?
+  end
+
+  def track_analytics(state)
+    Analytics.track("order.charged", order_id: state[:order].id)
+    # return value doesn't matter — pass always continues
+  end
+
+  def send_confirmation(state)
+    OrderMailer.confirmation(state[:order]).deliver_later
+    true
+  end
+
+  def refund(state)
+    PaymentGateway.refund(state[:charge]) if state[:charge]
+    false
+  end
+end
+```
+
+### Forms
+
+Forms decouple input validation from your models. They allow you to build UI and APIs that aren't coupled to your database modeling and allow you define exactly what you're willing to accept.
+
+They're built on `ActiveModel::Model`, `ActiveModel::Attributes`, and `ActiveModel::Dirty` — so you already know the API.
+
+> [!TIP]
+> Already familiar with form objects? Skip ahead to [Contracts](#contracts) to see how forms wire into operations.
+
+#### Defining a Form
+
+```ruby
+class ArticleForm < Operational::Form
+  attribute :title, :string
+  attribute :body, :string
+  attribute :published, :boolean, default: false
+
+  validates :title, presence: true, length: { maximum: 200 }
+  validates :body, presence: true
+end
+```
+
+#### Building, Validating, and Syncing
+
+The basic lifecycle of a form is **build → validate → sync**. For single-model forms, this is straightforward — pass a model to `.build` and attributes defined in your form matching attributes in the model are automatically copied in both directions:
+
+```ruby
+# Build — pre-populates form from the model's matching attributes
+article = Article.find(params[:id])
+form = ArticleForm.build(model: article)
+form.title       # => article.title (auto-copied)
+form.persisted?  # => true (detected from model)
+
+# Validate — assigns params, runs validations, returns true/false
+form.validate(title: "Updated", body: "New content")  # => true
+form.validate(title: "")                               # => false
+form.errors.full_messages                              # => ["Title can't be blank"]
+
+# Sync — writes matching attributes back to the model
+form.sync(model: article)
+article.title  # => "Updated"
+```
+
+Any params that don't match a defined form attribute are silently ignored — no need for `strong_parameters`. `ActionController::Parameters` are handled automatically.
+
+> [!NOTE]
+> Inside an operation, [`Contract` helpers](#contracts) handle this entire lifecycle as steps — you won't call these methods directly.
+
+You can also pass **state** to `.build`, which is separate from the form's attributes — it's not user input, it's context. State is available as `@state` and is useful for conditional validation (e.g., only admins can publish) and prepopulating defaults from things the user doesn't control:
+
+```ruby
+form = ArticleForm.build(model: article, state: { current_user: current_user, team: team })
+```
+
+#### Multi-Model Forms: Prepopulate and Sync Hooks
+
+For simple single-model forms, the automatic attribute matching handles everything. For more complex cases — where a single form spans multiple models — you can define `prepopulate` and `on_sync` hooks to control how data flows in and out:
+
+```ruby
+class NewArticleForm < Operational::Form
+  attribute :title, :string
+  attribute :body, :string
+  attribute :author_bio, :string
+  attribute :default_category, :string
+
+  # Pull data IN from multiple sources when the form is built
+  def prepopulate(state)
+    self.author_bio = state[:current_user]&.bio
+    self.default_category = state[:team]&.default_category
+  end
+
+  # Push data OUT to multiple models when the form is synced
+  def on_sync(state)
+    state[:author].update!(bio: author_bio) if author_bio_changed?
+  end
+end
+
+# Build pulls from article (automatic) + current_user + team (via prepopulate)
+form = NewArticleForm.build(model: article, state: { current_user: user, team: team, author: user })
+
+# Sync writes to article (automatic) + author (via on_sync)
+form.sync(model: article, state: { article: article, author: user })
+```
+
+#### Dirty Tracking
+
+Forms support ActiveModel dirty tracking out of the box:
+
+```ruby
+form = ArticleForm.build(model: article)
+form.changed?        # => false (clean after build)
+
+form.title = "New"
+form.changed?        # => true
+form.title_changed?  # => true
+form.title_was       # => "Original Title"
+```
+
+#### State-Dependent Validators
+
+Access operation state inside custom validators via `@state`:
+
+```ruby
+class ArticleForm < Operational::Form
+  attribute :title, :string
+  validate :must_be_admin
+
+  def must_be_admin
+    errors.add(:base, "Not authorized") unless @state[:current_user]&.admin?
+  end
+end
+```
+
+### Contracts
+
+Contract helpers wire forms into operations as steps. This is where Operations and Forms come together.
+
+#### Contract.Build
+
+Creates a form instance and stores it in the state:
+
+```ruby
+step Contract::Build(contract: ArticleForm)
+# state[:contract] is now an ArticleForm instance
+
+# With a model for pre-population:
+step Contract::Build(contract: ArticleForm, model_key: :article)
+```
+
+Options:
+- `contract:` — the form class (required)
+- `name:` — state key to store the form (default: `:contract`)
+- `model_key:` — state key containing the model to pre-populate from
+- `model_persisted:` — override `persisted?` detection
+- `prepopulate_method:` — method to call for prepopulation (default: `:prepopulate`)
+
+#### Contract.Validate
+
+Validates the form using params from the state:
+
+```ruby
+step Contract::Validate()
+# Validates state[:contract] with state[:params]
+
+# With nested params:
+step Contract::Validate(params_path: :article)
+# Validates with state[:params][:article]
+
+# With a custom path:
+step Contract::Validate(params_path: [:custom, :path])
+# Validates with state[:custom][:path]
+```
+
+Options:
+- `name:` — state key where the form is stored (default: `:contract`)
+- `params_path:` — `nil` for `state[:params]`, a symbol for `state[:params][symbol]`, or an array for a custom dig path
+
+Returns `true` if validation passes, `false` otherwise — making it a natural railway step.
+
+#### Contract.Sync
+
+Syncs form data back to a model:
+
+```ruby
+step Contract::Sync(model_key: :article)
+```
+
+Options:
+- `name:` — state key where the form is stored (default: `:contract`)
+- `model_key:` — state key containing the model to sync to
+- `sync_method:` — custom sync hook method name (default: `:on_sync`)
+
+#### Full Worked Example
+
+```ruby
+# app/forms/article_form.rb
+class ArticleForm < Operational::Form
+  attribute :title, :string
+  attribute :body, :string
+
+  validates :title, presence: true
+  validates :body, presence: true
+
+  def on_sync(state)
+    state[:article].published_at = Time.current if state[:publish]
+  end
+end
+
+# app/operations/create_article_operation.rb
+class CreateArticleOperation < Operational::Operation
+  step :build_article
+  step Contract::Build(contract: ArticleForm, model_key: :article)
+  step Contract::Validate()
+  step Contract::Sync(model_key: :article)
+  step :save
+
+  def build_article(state)
+    state[:article] = Article.new
+  end
+
+  def save(state)
+    state[:article].save
+  end
+end
+
+# Usage
+result = CreateArticleOperation.call(params: { title: "Hello", body: "World" })
+result.succeeded? # => true
+result[:article]  # => #<Article id: 1, title: "Hello", ...>
+```
+
+### Composing Operations
+
+Just like Rails controllers pair `new`/`create` and `edit`/`update`, operations often share setup logic between actions. `Nested::Operation` lets you extract the common part — building the model, setting up the form — into a reusable operation that gets nested inside the action-specific ones:
+
+```ruby
+class CreateArticleOperation < Operational::Operation
+  # The "new" part — builds the model and sets up the form
+  class Present < Operational::Operation
+    step :build_article
+    step Contract::Build(contract: ArticleForm, model_key: :article)
+
+    def build_article(state)
+      state[:article] = Article.new(author: state[:current_user])
+    end
+  end
+
+  # The "create" part — nests Present, then validates, syncs, and persists
+  step Nested::Operation(operation: Present)
+  step Contract::Validate()
+  step Contract::Sync(model_key: :article)
+  pass :persist
+
+  def persist(state)
+    ActiveRecord::Base.transaction do
+      state[:article].save!
+    end
+  end
+end
+```
+
+The `CreateArticleOperation::Present` operation can be used on the `new` controller action and the `CreateArticleOperation` can be used on the `create` controller action, without duplicating the setup needed to present the form and save it... something often done by extracting helpers in the controller.
+
+### Rails Integration
+
+Include `Operational::Controller` in your controllers to get the `run` helper:
+
+```ruby
+class ArticlesController < ApplicationController
+  include Operational::Controller
+
+  def create
+    if run CreateArticleOperation
+      redirect_to @state[:article], notice: "Article created!"
+    else
+      render :new, status: :unprocessable_entity
+    end
+  end
+end
+```
+
+`run` automatically injects `params` and `current_user` (if available) into the operation state, and exposes the result state as `@state`.
+
+You can pass additional state:
+
+```ruby
+run CreateArticleOperation, publish: true, category: @category
+```
+
+Override `_operational_default_state` to customize what gets injected:
+
+```ruby
+class ApplicationController < ActionController::Base
+  include Operational::Controller
+
+  protected
+
+  def _operational_default_state
+    super.merge(admin: current_user&.admin?)
+  end
+end
+```
+
+## Project Structure
+
+We recommend organizing operations and forms under `app/concepts/`, grouped by the domain concept they belong to:
+
+```
+app/
+  concepts/
+    article/
+      article_form.rb
+      create_article_operation.rb
+      publish_article_operation.rb
+    registration/
+      signup_form.rb
+      register_user_operation.rb
+  controllers/
+    articles_controller.rb
+    registrations_controller.rb
+  models/
+    article.rb
+    user.rb
+```
+
+This keeps related operations and forms together — everything about articles lives in `app/concepts/article/`. Rails autoloading picks them up automatically — no configuration needed.
+
+## Full Example
+
+Here's a complete `new`/`create` flow — form, operation, and controller working together:
+
+```ruby
+# app/concepts/article/article_form.rb
+class ArticleForm < Operational::Form
+  attribute :title, :string
+  attribute :body, :string
+
+  validates :title, presence: true, length: { maximum: 200 }
+  validates :body, presence: true
+end
+
+# app/concepts/article/create_article_operation.rb
+class CreateArticleOperation < Operational::Operation
+  # The "new" part — reusable for the new action
+  class Present < Operational::Operation
+    step :init
+    step Contract::Build(contract: ArticleForm, model_key: :article)
+
+    def init(state)
+      state[:article] = Article.new(author: state[:current_user])
+    end
+  end
+
+  # The "create" part
+  step Nested::Operation(operation: Present)
+  step Contract::Validate()
+  step Contract::Sync(model_key: :article)
+  pass :persist
+
+  def persist(state)
+    state[:article].save!
+  end
+end
+
+# app/controllers/articles_controller.rb
+class ArticlesController < ApplicationController
+  include Operational::Controller
+
+  def new
+    run CreateArticleOperation::Present
+  end
+
+  def create
+    if run CreateArticleOperation
+      redirect_to @state[:article], notice: "Article created!"
+    else
+      render :new, status: :unprocessable_entity
+    end
+  end
+end
+```
+
+The `new` action runs just `Present` to build an empty form. The `create` action nests `Present` then adds validation, syncing, and persistence. The controller only handles HTTP routing — all business logic lives in the operation.
+
+## Testing
+
+### Testing Operations
+
+```ruby
+RSpec.describe CreateArticleOperation do
+  it "creates an article with valid params" do
+    result = CreateArticleOperation.call(
+      params: { title: "Test", body: "Content" },
+      current_user: create(:user)
+    )
+
+    expect(result).to be_succeeded
+    expect(result[:article]).to be_persisted
+  end
+
+  it "fails with invalid params" do
+    result = CreateArticleOperation.call(
+      params: { title: "" },
+      current_user: create(:user)
+    )
+
+    expect(result).to be_failed
+    expect(result[:contract].errors[:title]).to include("can't be blank")
+  end
+end
+```
+
+### Testing Forms
+
+```ruby
+class ArticleFormTest < Minitest::Test
+  def test_validates_presence_of_title
+    form = ArticleForm.build
+    form.validate(title: "", body: "Content")
+
+    assert_includes form.errors[:title], "can't be blank"
+  end
+
+  def test_syncs_attributes_to_the_model
+    article = Article.new
+    form = ArticleForm.build(model: article)
+    form.validate(title: "Updated", body: "New content")
+    form.sync(model: article)
+
+    assert_equal "Updated", article.title
+  end
+end
+```
+
+## Requirements
+
+- Ruby >= 3.0
+- ActiveModel >= 7.0
 
 ## Contributing
 
 Bug reports and pull requests are welcome on GitHub at https://github.com/bryanrite/operational. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [Contributor Covenant](http://contributor-covenant.org) code of conduct.
 
-
 ## License
 
 The gem is available as open source under the terms of the [MIT License](http://opensource.org/licenses/MIT).
-
